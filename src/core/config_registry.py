@@ -854,6 +854,20 @@ _FIELD_DEFINITIONS: Dict[str, Dict[str, Any]] = {
         "validation": {},
         "display_order": 17,
     },
+    "TELEGRAM_PARSE_MODE": {
+        "title": "Telegram Parse Mode",
+        "description": "Telegram text parse mode: Markdown / MarkdownV2 / HTML.",
+        "category": "notification",
+        "data_type": "string",
+        "ui_control": "select",
+        "is_sensitive": False,
+        "is_required": False,
+        "is_editable": True,
+        "default_value": "Markdown",
+        "options": ["Markdown", "MarkdownV2", "HTML"],
+        "validation": {},
+        "display_order": 18,
+    },
     # ------------------------------------------------------------------
     # Notification – Email
     # ------------------------------------------------------------------

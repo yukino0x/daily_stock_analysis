@@ -359,6 +359,30 @@ class TestTelegramSender(unittest.TestCase):
         self.assertTrue(result)
         self.assertIn("sendMessage", mock_post.call_args[0][0])
 
+    @mock.patch("src.notification_sender.telegram_sender.requests.post")
+    def test_send_parse_error_falls_back_to_html(self, mock_post):
+        mock_post.side_effect = [
+            _response(200, {"ok": False, "description": "Bad Request: can't parse entities"}),
+            _response(200, {"ok": True}),
+        ]
+        cfg = _config(telegram_bot_token="BOT", telegram_chat_id="CHAT")
+        sender = TelegramSender(cfg)
+        result = sender.send_to_telegram("**hello** [site](https://example.com)")
+        self.assertTrue(result)
+        self.assertEqual(mock_post.call_count, 2)
+        second_payload = mock_post.call_args_list[1].kwargs["json"]
+        self.assertEqual(second_payload.get("parse_mode"), "HTML")
+
+    @mock.patch("src.notification_sender.telegram_sender.requests.post")
+    def test_send_html_parse_mode_from_config(self, mock_post):
+        mock_post.return_value = _response(200, {"ok": True})
+        cfg = _config(telegram_bot_token="BOT", telegram_chat_id="CHAT", telegram_parse_mode="HTML")
+        sender = TelegramSender(cfg)
+        result = sender.send_to_telegram("**hello**")
+        self.assertTrue(result)
+        payload = mock_post.call_args.kwargs["json"]
+        self.assertEqual(payload.get("parse_mode"), "HTML")
+
 
 if __name__ == "__main__":
     unittest.main()

@@ -9,6 +9,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Fixed
+- 🐛 **Telegram markdown render fallback** — when Telegram `parse_mode` parsing fails, sender now retries with HTML rendering before plain-text fallback; added configurable `TELEGRAM_PARSE_MODE` (`Markdown`/`MarkdownV2`/`HTML`) for cloud and local runs.
+- 🔧 **GitHub Actions data fetcher priority mapping** — `daily_analysis.yml` now maps `EFINANCE_PRIORITY`/`AKSHARE_PRIORITY`/`TUSHARE_PRIORITY`/`PYTDX_PRIORITY`/`BAOSTOCK_PRIORITY`/`YFINANCE_PRIORITY` from repository Variables/Secrets, so cloud runs can actually override default `efinance -> ... -> yfinance` order (e.g., US stocks with `YFINANCE_PRIORITY=0`).
+
 ## [3.6.0] - 2026-03-14
 
 ### Added
