@@ -156,6 +156,7 @@
 | `BRAVE_API_KEYS` | [Brave Search](https://brave.com/search/api/) API（隐私优先，美股优化，多个key用逗号分隔） | 可选 |
 | `SEARXNG_BASE_URLS` | SearXNG 自建实例（无配额兜底，需在 settings.yml 启用 format: json） | 可选 |
 | `TUSHARE_TOKEN` | [Tushare Pro](https://tushare.pro/weborder/#/login?reg=834638 ) Token | 可选 |
+| `EFINANCE_PRIORITY` / `AKSHARE_PRIORITY` / `TUSHARE_PRIORITY` / `PYTDX_PRIORITY` / `BAOSTOCK_PRIORITY` / `YFINANCE_PRIORITY` | 历史数据源优先级（数字越小越先尝试）；美股建议设 `YFINANCE_PRIORITY=0` | 可选 |
 | `PREFETCH_REALTIME_QUOTES` | 实时行情预取开关：设为 `false` 可禁用全市场预取（默认 `true`） | 可选 |
 | `WECHAT_MSG_TYPE` | 企微消息类型，默认 markdown，支持配置 text 类型，发送纯 markdown 文本 | 可选 |
 | `NEWS_MAX_AGE_DAYS` | 新闻最大时效（天），默认 3，避免使用过时信息 | 可选 |

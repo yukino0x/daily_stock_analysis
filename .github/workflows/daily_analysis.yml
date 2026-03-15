@@ -89,6 +89,14 @@ jobs:
           # 数据源
           # ==========================================
           TUSHARE_TOKEN: ${{ secrets.TUSHARE_TOKEN }}
+          # 历史/日线数据源优先级（数字越小优先级越高）
+          # 默认: efinance(0) > akshare(1) > tushare/pytdx(2) > baostock(3) > yfinance(4)
+          EFINANCE_PRIORITY: ${{ vars.EFINANCE_PRIORITY || secrets.EFINANCE_PRIORITY || '0' }}
+          AKSHARE_PRIORITY: ${{ vars.AKSHARE_PRIORITY || secrets.AKSHARE_PRIORITY || '1' }}
+          TUSHARE_PRIORITY: ${{ vars.TUSHARE_PRIORITY || secrets.TUSHARE_PRIORITY || '2' }}
+          PYTDX_PRIORITY: ${{ vars.PYTDX_PRIORITY || secrets.PYTDX_PRIORITY || '2' }}
+          BAOSTOCK_PRIORITY: ${{ vars.BAOSTOCK_PRIORITY || secrets.BAOSTOCK_PRIORITY || '3' }}
+          YFINANCE_PRIORITY: ${{ vars.YFINANCE_PRIORITY || secrets.YFINANCE_PRIORITY || '4' }}
           
           # ==========================================
           # 搜索服务
