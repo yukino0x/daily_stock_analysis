@@ -9,13 +9,46 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Added
+- Portfolio P0 PR1 core ledger and snapshot workflow:
+  - Added portfolio account/event/snapshot models and API endpoints.
+  - Added replay engine with FIFO/AVG cost method.
+  - Added deterministic same-day ordering: `cash -> corporate action -> trade`.
+  - Added atomic persistence for position cache, lot cache, and daily snapshot.
+- Portfolio P0 PR2 import and risk capability:
+  - Added broker CSV parse/commit flow (`huatai` / `citic` / `cmb`).
+  - Added dedup fallback by key-field hash when `trade_uid` is absent.
+  - Added risk report API for concentration, drawdown and stop-loss proximity.
+  - Added FX refresh API with stale fallback behavior.
+- Portfolio P0 PR3 web and agent consumption capability:
+  - Added Web route `/portfolio` with snapshot/risk consumption.
+  - Added concentration pie chart view (Top Positions) via Recharts.
+  - Added `get_portfolio_snapshot` Agent data tool with compact-by-default output and optional detailed positions.
+- Portfolio P0 PR4 gap closure capability:
+  - Added portfolio event query APIs (`GET /portfolio/trades`, `GET /portfolio/cash-ledger`, `GET /portfolio/corporate-actions`) with filters and pagination.
+  - Added extensible CSV parser registry and broker discovery API (`GET /portfolio/imports/csv/brokers`).
+  - Added Web manual entry forms (trade/cash/corporate action), inline account creation entry, CSV parse/commit entry, and event list view.
+  - Added risk `sector_concentration` block with A-share board mapping and `UNCLASSIFIED` fail-open fallback.
+  - Added broker selector UI fail-open fallback to built-in brokers when broker discovery API fails or returns empty.
+
+### Changed
+- `POST /api/v1/portfolio/trades` now returns `409` on duplicate `trade_uid` conflict within the same account.
+- Portfolio risk response now includes additive `sector_concentration` field; existing `concentration` remains unchanged for compatibility.
+
 ### Fixed
-- 🐛 **Telegram markdown render fallback** — when Telegram `parse_mode` parsing fails, sender now retries with HTML rendering before plain-text fallback; added configurable `TELEGRAM_PARSE_MODE` (`Markdown`/`MarkdownV2`/`HTML`) for cloud and local runs.
-- 🔧 **GitHub Actions data fetcher priority mapping** — `daily_analysis.yml` now maps `EFINANCE_PRIORITY`/`AKSHARE_PRIORITY`/`TUSHARE_PRIORITY`/`PYTDX_PRIORITY`/`BAOSTOCK_PRIORITY`/`YFINANCE_PRIORITY` from repository Variables/Secrets, so cloud runs can actually override default `efinance -> ... -> yfinance` order (e.g., US stocks with `YFINANCE_PRIORITY=0`).
+- Portfolio CSV import dedup now persists/checks key-field hash even when `trade_uid` exists, preventing mixed-source duplicate writes (with/without `trade_uid`) for the same trade.
+- Portfolio risk drawdown now backfills missing daily snapshots inside the configured lookback window on first report call, avoiding cache-warmup dependent underestimation.
+
+### Tests
+- Added PR1 tests for replay edge cases and API conflict handling.
+- Added PR2 tests for import idempotency, dedup edge cases, threshold boundaries, and FX stale fallback.
 
 ## [3.6.0] - 2026-03-14
 
 ### Added
+- 📊 **Web UI Design System** — implemented dual-theme architecture and terminal-inspired atomic UI components
+- 📊 **UI Components Refactoring** — integrated `clsx` and `tailwind-merge` for robust class composition across Web UI
+
 - 🗑️ **History batch deletion** — Web UI now supports multi-selection and batch deletion of analysis history; added `POST /api/v1/history/batch-delete` endpoint and `ConfirmDialog` component.
 - 🔐 **Auth settings API** — new `POST /api/v1/auth/settings` endpoint to enable or disable Web authentication at runtime and set the initial admin password when needed
 - openclaw Skill 集成指南 — 新增 [docs/openclaw-skill-integration.md](openclaw-skill-integration.md)，说明如何通过 openclaw Skill 调用 DSA API
@@ -45,6 +78,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 - 📖 **.env.example** — added `AGENT_ARCH` and `AGENT_NL_ROUTING` configuration documentation
 
 ### Fixed
+- 🎮 **Discord channel env compatibility** — runtime now accepts legacy `DISCORD_CHANNEL_ID` as a fallback for `DISCORD_MAIN_CHANNEL_ID`, and the docs/examples now use the same variable name as the actual workflow/config implementation
 - 🐛 **Session secret rotation on Windows** — use atomic replace so auth toggles invalidate existing sessions even when `.session_secret` already exists
 - 🐛 **Auth toggle atomicity** — persist `ADMIN_AUTH_ENABLED` before rotating session secret; on rotation failure, roll back to the previous auth state
 - 🔧 **LLM runtime selection guardrails** — YAML 模式下渠道编辑器不再覆盖 `LITELLM_MODEL` / fallback / Vision；系统配置校验补上全部渠道禁用后的运行时来源检查，并修复 `vertexai/...` 这类协议别名模型被重复加前缀的问题
