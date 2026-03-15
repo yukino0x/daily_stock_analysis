@@ -36,6 +36,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 - Portfolio risk response now includes additive `sector_concentration` field; existing `concentration` remains unchanged for compatibility.
 
 ### Fixed
+- 🐛 市场复盘语言一致性修复 — 当 `MARKET_REVIEW_REGION=us` 时，大盘复盘正文改为中文输出，避免出现英文报告。
 - Portfolio CSV import dedup now persists/checks key-field hash even when `trade_uid` exists, preventing mixed-source duplicate writes (with/without `trade_uid`) for the same trade.
 - Portfolio risk drawdown now backfills missing daily snapshots inside the configured lookback window on first report call, avoiding cache-warmup dependent underestimation.
 

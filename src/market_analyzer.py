@@ -426,19 +426,19 @@ class MarketAnalyzer:
         sector_block = ""
         if self.region == "us":
             if self.profile.has_market_stats:
-                stats_block = f"""## Market Overview
-- Up: {overview.up_count} | Down: {overview.down_count} | Flat: {overview.flat_count}
-- Limit up: {overview.limit_up_count} | Limit down: {overview.limit_down_count}
-- Total volume (CNY bn): {overview.total_amount:.0f}"""
+                stats_block = f"""## 市场概况
+- 上涨: {overview.up_count} 家 | 下跌: {overview.down_count} 家 | 平盘: {overview.flat_count} 家
+- 涨停: {overview.limit_up_count} 家 | 跌停: {overview.limit_down_count} 家
+- 总成交额: {overview.total_amount:.0f} 亿元"""
             else:
-                stats_block = "## Market Overview\n(US market has no equivalent advance/decline stats.)"
+                stats_block = "## 市场概况\n（美股暂无可对齐的涨跌家数统计）"
 
             if self.profile.has_sector_rankings:
-                sector_block = f"""## Sector Performance
-Leading: {top_sectors_text if top_sectors_text else "N/A"}
-Lagging: {bottom_sectors_text if bottom_sectors_text else "N/A"}"""
+                sector_block = f"""## 板块表现
+领涨: {top_sectors_text if top_sectors_text else "暂无数据"}
+领跌: {bottom_sectors_text if bottom_sectors_text else "暂无数据"}"""
             else:
-                sector_block = "## Sector Performance\n(US sector data not available.)"
+                sector_block = "## 板块表现\n（美股暂无板块涨跌数据）"
         else:
             if self.profile.has_market_stats:
                 stats_block = f"""## 市场概况
@@ -460,78 +460,9 @@ Lagging: {bottom_sectors_text if bottom_sectors_text else "N/A"}"""
             if not indices_text
             else ""
         )
-        indices_placeholder = indices_text if indices_text else ("No index data (API error)" if self.region == "us" else "暂无指数数据（接口异常）")
-        news_placeholder = news_text if news_text else ("No relevant news" if self.region == "us" else "暂无相关新闻")
+        indices_placeholder = indices_text if indices_text else "暂无指数数据（接口异常）"
+        news_placeholder = news_text if news_text else "暂无相关新闻"
 
-        # 美股场景使用英文提示语，便于生成更符合美股语境的报告
-        if self.region == "us":
-            data_no_indices_hint_en = (
-                "Note: Market data fetch failed. Rely mainly on [Market News] for qualitative analysis. Do not invent index levels."
-                if not indices_text
-                else ""
-            )
-            return f"""You are a professional US/A/H market analyst. Please produce a concise US market recap report based on the data below.
-
-[Requirements]
-- Output pure Markdown only
-- No JSON
-- No code blocks
-- Use emoji sparingly in headings (at most one per heading)
-
----
-
-# Today's Market Data
-
-## Date
-{overview.date}
-
-## Major Indices
-{indices_placeholder}
-
-{stats_block}
-
-{sector_block}
-
-## Market News
-{news_placeholder}
-
-{data_no_indices_hint_en}
-
-{self.strategy.to_prompt_block()}
-
----
-
-# Output Template (follow this structure)
-
-## {overview.date} US Market Recap
-
-### 1. Market Summary
-(2-3 sentences on overall market performance, index moves, volume)
-
-### 2. Index Commentary
-(Analyse S&P 500, Nasdaq, Dow and other major index moves.)
-
-### 3. Fund Flows
-(Interpret volume and flow implications)
-
-### 4. Sector/Theme Highlights
-(Analyze drivers behind leading/lagging sectors)
-
-### 5. Outlook
-(Short-term view based on price action and news)
-
-### 6. Risk Alerts
-(Key risks to watch)
-
-### 7. Strategy Plan
-(Provide risk-on/neutral/risk-off stance, position sizing guideline, and one invalidation trigger.)
-
----
-
-Output the report content directly, no extra commentary.
-"""
-
-        # A 股场景使用中文提示语
         return f"""你是一位专业的A/H/美股市场分析师，请根据以下数据生成一份简洁的大盘复盘报告。
 
 【重要】输出要求：
@@ -539,6 +470,7 @@ Output the report content directly, no extra commentary.
 - 禁止输出 JSON 格式
 - 禁止输出代码块
 - emoji 仅在标题处少量使用（每个标题最多1个）
+- 无论市场区域是 cn/us/both，最终报告正文必须使用中文
 
 ---
 
