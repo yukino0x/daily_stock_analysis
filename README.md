@@ -144,6 +144,8 @@
 | `MD2IMG_ENGINE` | 转图引擎：`wkhtmltoimage`（默认）或 `markdown-to-file`（emoji 更好） | 可选 |
 
 > 至少配置一个渠道，配置多个则同时推送。图片发送与引擎安装细节请参考 [完整指南](docs/full-guide.md)
+>
+> GitHub Actions 用户请在 `Settings → Secrets and variables → Actions` 中配置上述变量（推荐放在 Variables；敏感值放 Secrets）。
 
 </details>
 
