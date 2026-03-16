@@ -948,9 +948,10 @@ class DataFetcherManager:
                     if hasattr(fetcher, 'get_realtime_quote'):
                         try:
                             quote = fetcher.get_realtime_quote(stock_code)
-                            if quote is not None:
+                            if quote is not None and quote.has_basic_data():
                                 logger.info(f"[实时行情] 美股指数 {stock_code} 成功获取 (来源: yfinance)")
                                 return quote
+                            logger.warning(f"[实时行情] 美股指数 {stock_code} 未返回有效价格")
                         except Exception as e:
                             logger.warning(f"[实时行情] 美股指数 {stock_code} 获取失败: {e}")
                     break
@@ -964,9 +965,10 @@ class DataFetcherManager:
                     if hasattr(fetcher, 'get_realtime_quote'):
                         try:
                             quote = fetcher.get_realtime_quote(stock_code)
-                            if quote is not None:
+                            if quote is not None and quote.has_basic_data():
                                 logger.info(f"[实时行情] 美股 {stock_code} 成功获取 (来源: yfinance)")
                                 return quote
+                            logger.warning(f"[实时行情] 美股 {stock_code} 未返回有效价格")
                         except Exception as e:
                             logger.warning(f"[实时行情] 美股 {stock_code} 获取失败: {e}")
                     break
@@ -1225,6 +1227,11 @@ class DataFetcherManager:
             self._stock_name_cache[stock_code] = static_name
             return static_name
 
+        # 非 A 股代码不再回退到 A 股专用名称源，避免无效告警和额外延迟。
+        if _market_tag(stock_code) != "cn":
+            logger.info(f"[股票名称] {stock_code} 非 A 股且未命中实时/静态映射，跳过 CN 名称源回退")
+            return ""
+
         # 3. 依次尝试各个数据源
         for fetcher in self._fetchers:
             if hasattr(fetcher, 'get_stock_name'):
@@ -1283,9 +1290,15 @@ class DataFetcherManager:
             self.batch_get_stock_names(stock_codes)
             return
         for code in stock_codes:
-            # Skip realtime lookup to avoid triggering expensive full-market quote
-            # requests during the prefetch phase.
-            self.get_stock_name(code, allow_realtime=False)
+            # For CN symbols, skip realtime lookup to avoid triggering expensive
+            # full-market quote requests during the prefetch phase.
+            #
+            # For non-CN symbols (US/HK), realtime lookup routes to dedicated
+            # providers (e.g. yfinance for US) and does not rely on CN-only
+            # name fetchers such as tushare/pytdx/baostock. Keep realtime on to
+            # avoid noisy fallback attempts and unnecessary delays.
+            allow_realtime = _market_tag(code) != "cn"
+            self.get_stock_name(code, allow_realtime=allow_realtime)
 
     def batch_get_stock_names(self, stock_codes: List[str]) -> Dict[str, str]:
         """
