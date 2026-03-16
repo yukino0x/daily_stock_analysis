@@ -13,6 +13,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 - 🐛 **港股 Agent 实时行情去重与快速路由** — 统一 `HK01810` / `1810.HK` / `01810` 等港股代码归一规则；港股实时行情改为直接走单次 `akshare_hk` 路径，避免按 A 股 source priority 重复触发同一失败接口；Agent 运行期对显式 `retriable=false` 的工具失败增加短路缓存，减少同轮分析中的重复失败调用。
 - 🔧 **GitHub Actions Markdown 转图片变量映射补齐** — `daily_analysis.yml` 新增 `MARKDOWN_TO_IMAGE_CHANNELS`、`MARKDOWN_TO_IMAGE_MAX_CHARS`、`MD2IMG_ENGINE` 的 env 映射，支持直接从仓库 `Actions Variables/Secrets` 生效，避免仅在 `.env` 生效导致云端转图配置失效。
+- 🛠️ **GitHub Actions 转图依赖按需安装** — `daily_analysis.yml` 在检测到启用 `MARKDOWN_TO_IMAGE_CHANNELS` 时，会按 `MD2IMG_ENGINE` 自动安装 `wkhtmltopdf` 或 `markdown-to-file`，修复云端仅回退 Markdown 文本的问题。
 
 ## [3.7.0] - 2026-03-15
 

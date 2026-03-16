@@ -55,6 +55,36 @@ jobs:
       - name: 创建必要目录
         run: |
           mkdir -p data logs reports
+
+
+      - name: 安装 Markdown 转图片依赖（按需）
+        env:
+          MARKDOWN_TO_IMAGE_CHANNELS: ${{ vars.MARKDOWN_TO_IMAGE_CHANNELS || secrets.MARKDOWN_TO_IMAGE_CHANNELS || '' }}
+          MD2IMG_ENGINE: ${{ vars.MD2IMG_ENGINE || secrets.MD2IMG_ENGINE || 'wkhtmltoimage' }}
+        run: |
+          set -e
+          channels="${MARKDOWN_TO_IMAGE_CHANNELS,,}"
+          if [ -z "$channels" ]; then
+            echo "ℹ️ 未配置 MARKDOWN_TO_IMAGE_CHANNELS，跳过转图依赖安装"
+            exit 0
+          fi
+
+          if [[ ",$channels," != *",telegram,"* && ",$channels," != *",wechat,"* && ",$channels," != *",custom,"* && ",$channels," != *",email,"* ]]; then
+            echo "ℹ️ MARKDOWN_TO_IMAGE_CHANNELS=$channels 不包含支持转图的渠道，跳过安装"
+            exit 0
+          fi
+
+          engine="${MD2IMG_ENGINE:-wkhtmltoimage}"
+          echo "🖼️ 检测到已启用转图渠道，准备安装引擎依赖: $engine"
+
+          if [ "$engine" = "markdown-to-file" ]; then
+            npm install -g markdown-to-file
+            command -v m2f >/dev/null && echo "✅ m2f 已安装: $(command -v m2f)"
+          else
+            sudo apt-get update
+            sudo apt-get install -y wkhtmltopdf
+            command -v wkhtmltoimage >/dev/null && echo "✅ wkhtmltoimage 已安装: $(command -v wkhtmltoimage)"
+          fi
       
       - name: 执行股票分析
         env:
