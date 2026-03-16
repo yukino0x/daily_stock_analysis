@@ -12,6 +12,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 ### 修复
 
 - 🐛 **港股 Agent 实时行情去重与快速路由** — 统一 `HK01810` / `1810.HK` / `01810` 等港股代码归一规则；港股实时行情改为直接走单次 `akshare_hk` 路径，避免按 A 股 source priority 重复触发同一失败接口；Agent 运行期对显式 `retriable=false` 的工具失败增加短路缓存，减少同轮分析中的重复失败调用。
+- 🐛 **manual-ai-inputs JSON 序列化修复** — 导出包包含 `date`/`datetime`/`Enum` 等对象时不再抛出 `Object of type date is not JSON serializable`，改为统一转为可序列化字符串或枚举值。
 
 ### 新功能
 

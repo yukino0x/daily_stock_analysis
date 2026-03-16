@@ -41,7 +41,8 @@ import logging
 import sys
 import time
 import uuid
-from datetime import datetime, timezone, timedelta
+from datetime import date, datetime, timezone, timedelta
+from enum import Enum
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
 
@@ -276,6 +277,17 @@ def _append_github_output(name: str, value: str) -> None:
         f.write(f"{name}<<EOF\n{value}\nEOF\n")
 
 
+def _json_default(value: Any) -> Any:
+    """JSON serializer for non-serializable objects in exported manual bundle."""
+    if isinstance(value, (datetime, date)):
+        return value.isoformat()
+    if isinstance(value, Enum):
+        return value.value
+    if isinstance(value, Path):
+        return str(value)
+    return str(value)
+
+
 def export_manual_ai_inputs(
     config: Config,
     args: argparse.Namespace,
@@ -440,7 +452,7 @@ def export_manual_ai_inputs(
         'stock_count': len(exported_stocks),
         'stocks': exported_stocks,
     }
-    stock_json_text = json.dumps(payload, ensure_ascii=False, indent=2)
+    stock_json_text = json.dumps(payload, ensure_ascii=False, indent=2, default=_json_default)
     stock_prompt_text = "\n\n---\n\n".join(stock_prompt_blocks)
 
     strategy_prompt_text = (
