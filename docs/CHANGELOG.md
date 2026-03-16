@@ -9,6 +9,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### 新功能
+
+- 🧾 **GitHub Actions 手动提问导出模式**：`daily_analysis.yml` 新增 `manual-ai-inputs` 运行模式；调用 `python main.py --export-manual-ai-inputs --no-notify`，仅抓取股票列表实时行情并导出到 `reports/manual_ai_inputs/`（个股股价 JSON、个股分析提示词、大盘复盘提示词），方便手动粘贴给 AI 提问。
+
+
 ## [3.7.0] - 2026-03-15
 
 ### 新功能

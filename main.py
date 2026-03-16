@@ -36,16 +36,19 @@ if os.getenv("GITHUB_ACTIONS") != "true" and os.getenv("USE_PROXY", "false").low
     os.environ["https_proxy"] = proxy_url
 
 import argparse
+import json
 import logging
 import sys
 import time
 import uuid
 from datetime import datetime, timezone, timedelta
+from pathlib import Path
 from typing import List, Optional, Tuple
 
 from data_provider.base import canonical_stock_code
 from src.core.pipeline import StockAnalysisPipeline
 from src.core.market_review import run_market_review
+from src.market_analyzer import MarketAnalyzer
 from src.webui_frontend import prepare_webui_frontend_assets
 from src.config import get_config, Config
 from src.logging_config import setup_logging
@@ -82,6 +85,12 @@ def parse_arguments() -> argparse.Namespace:
         '--dry-run',
         action='store_true',
         help='仅获取数据，不进行 AI 分析'
+    )
+
+    parser.add_argument(
+        '--export-manual-ai-inputs',
+        action='store_true',
+        help='抓取实时数据并导出 JSON + 提示词文件（不调用 AI）'
     )
 
     parser.add_argument(
@@ -442,6 +451,106 @@ def run_full_analysis(
         logger.exception(f"分析流程执行失败: {e}")
 
 
+
+
+def _export_manual_ai_inputs(
+    pipeline: StockAnalysisPipeline,
+    stock_codes: List[str],
+    config: Config,
+) -> Path:
+    """导出手动提问 AI 所需输入（JSON + 提示词）。"""
+    output_dir = Path(config.report_dir) / "manual_ai_inputs"
+    output_dir.mkdir(parents=True, exist_ok=True)
+
+    export_time = datetime.now(timezone(timedelta(hours=8))).strftime('%Y%m%d_%H%M%S')
+    quotes_path = output_dir / f"stock_quotes_{export_time}.json"
+    stock_prompt_path = output_dir / f"stock_analysis_prompts_{export_time}.md"
+    market_prompt_path = output_dir / f"market_review_prompt_{export_time}.md"
+
+    quote_items = []
+    stock_prompt_blocks: List[str] = []
+
+    for code in stock_codes:
+        stock_name = pipeline.fetcher_manager.get_stock_name(code) or code
+        quote = pipeline.fetcher_manager.get_realtime_quote(code)
+        quote_dict = quote.to_dict() if quote else {"code": code, "name": stock_name, "error": "quote_unavailable"}
+        if quote and stock_name and not quote_dict.get("name"):
+            quote_dict["name"] = stock_name
+        quote_items.append(quote_dict)
+
+        context = pipeline.db.get_analysis_context(code)
+        if context is None:
+            context = {
+                'code': code,
+                'stock_name': stock_name,
+                'date': date.today().isoformat(),
+                'data_missing': True,
+                'today': {},
+                'yesterday': {},
+            }
+
+        enhanced_context = pipeline._enhance_context(  # noqa: SLF001
+            context,
+            quote,
+            chip_data=None,
+            trend_result=None,
+            stock_name=stock_name,
+            fundamental_context=None,
+        )
+        prompt = pipeline.analyzer._format_prompt(enhanced_context, stock_name, news_context="")  # noqa: SLF001
+        stock_prompt_blocks.append(f"## {stock_name} ({code})\n\n```text\n{prompt}\n```")
+
+    with quotes_path.open('w', encoding='utf-8') as f:
+        json.dump(
+            {
+                "generated_at": datetime.now(timezone.utc).isoformat(),
+                "timezone": "UTC",
+                "stock_count": len(stock_codes),
+                "stocks": quote_items,
+            },
+            f,
+            ensure_ascii=False,
+            indent=2,
+        )
+
+    stock_prompt_path.write_text(
+        "# 个股分析提示词（手动提问版）\n\n" + "\n\n---\n\n".join(stock_prompt_blocks) + "\n",
+        encoding='utf-8',
+    )
+
+    region = getattr(config, 'market_review_region', 'cn') or 'cn'
+    region = region if region in ('cn', 'us') else 'cn'
+    market_analyzer = MarketAnalyzer(
+        search_service=pipeline.search_service,
+        analyzer=pipeline.analyzer,
+        region=region,
+    )
+    overview = market_analyzer.get_market_overview()
+    market_news = market_analyzer.search_market_news()
+    market_prompt = market_analyzer._build_review_prompt(overview, market_news)  # noqa: SLF001
+    market_prompt_path.write_text(
+        f"# 大盘复盘提示词（手动提问版）\n\n```text\n{market_prompt}\n```\n",
+        encoding='utf-8'
+    )
+
+    latest_marker = output_dir / "latest_manual_ai_inputs.json"
+    latest_marker.write_text(
+        json.dumps(
+            {
+                "quotes_json": str(quotes_path),
+                "stock_prompt_markdown": str(stock_prompt_path),
+                "market_prompt_markdown": str(market_prompt_path),
+            },
+            ensure_ascii=False,
+            indent=2,
+        ),
+        encoding='utf-8',
+    )
+
+    logger.info("手动 AI 输入已导出: %s", latest_marker)
+    return latest_marker
+
+
 def start_api_server(host: str, port: int, config: Config) -> None:
     """
     在后台线程启动 FastAPI 服务
@@ -538,6 +647,28 @@ def main() -> int:
     if args.stocks:
         stock_codes = [canonical_stock_code(c) for c in args.stocks.split(',') if (c or "").strip()]
         logger.info(f"使用命令行指定的股票列表: {stock_codes}")
+
+    # 手动 AI 输入导出模式：仅抓取行情并导出 JSON/提示词，不调用 AI
+    if getattr(args, 'export_manual_ai_inputs', False):
+        if stock_codes is None:
+            config.refresh_stock_list()
+            stock_codes = config.stock_list
+
+        if not stock_codes:
+            logger.warning("未配置股票列表，跳过导出")
+            return 0
+
+        query_id = uuid.uuid4().hex
+        pipeline = StockAnalysisPipeline(
+            config=config,
+            max_workers=args.workers,
+            query_id=query_id,
+            query_source="cli",
+            save_context_snapshot=False,
+        )
+        marker = _export_manual_ai_inputs(pipeline, stock_codes, config)
+        logger.info("手动 AI 输入导出完成，索引文件: %s", marker)
+        return 0
 
     # === 处理 --webui / --webui-only 参数，映射到 --serve / --serve-only ===
     if args.webui:

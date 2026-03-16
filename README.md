@@ -195,6 +195,8 @@
 
 `Actions` → `每日股票分析` → `Run workflow` → `Run workflow`
 
+> 手动运行 `mode` 支持 `manual-ai-inputs`：仅抓取股票列表实时行情并导出 3 个文件到 `reports/manual_ai_inputs/`（个股股价 JSON、个股分析提示词、大盘复盘提示词），便于你手动复制给 AI 提问。
+
 #### 完成
 
 默认每个**工作日 18:00（北京时间）**自动执行，也可手动触发。默认非交易日（含 A/H/US 节假日）不执行。
