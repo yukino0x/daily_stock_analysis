@@ -36,12 +36,14 @@ if os.getenv("GITHUB_ACTIONS") != "true" and os.getenv("USE_PROXY", "false").low
     os.environ["https_proxy"] = proxy_url
 
 import argparse
+import json
 import logging
 import sys
 import time
 import uuid
 from datetime import datetime, timezone, timedelta
-from typing import List, Optional, Tuple
+from pathlib import Path
+from typing import Any, Dict, List, Optional, Tuple
 
 from data_provider.base import canonical_stock_code
 from src.core.pipeline import StockAnalysisPipeline
@@ -49,6 +51,8 @@ from src.core.market_review import run_market_review
 from src.webui_frontend import prepare_webui_frontend_assets
 from src.config import get_config, Config
 from src.logging_config import setup_logging
+from src.market_analyzer import MarketAnalyzer
+from src.agent.factory import get_skill_manager
 
 
 logger = logging.getLogger(__name__)
@@ -69,6 +73,7 @@ def parse_arguments() -> argparse.Namespace:
   python main.py --single-notify    # 启用单股推送模式（每分析完一只立即推送）
   python main.py --schedule         # 启用定时任务模式
   python main.py --market-review    # 仅运行大盘复盘
+  python main.py --export-manual-ai-inputs  # 导出JSON与提示词，手动提问AI
         '''
     )
 
@@ -125,6 +130,12 @@ def parse_arguments() -> argparse.Namespace:
         '--market-review',
         action='store_true',
         help='仅运行大盘复盘分析'
+    )
+
+    parser.add_argument(
+        '--export-manual-ai-inputs',
+        action='store_true',
+        help='仅导出实时股价JSON与分析提示词（不调用AI）'
     )
 
     parser.add_argument(
@@ -253,6 +264,225 @@ def _compute_trading_day_filter(
 
     should_skip_all = (not filtered_codes) and (effective_region or '') == ''
     return (filtered_codes, effective_region, should_skip_all)
+
+
+def _append_github_output(name: str, value: str) -> None:
+    """Write multiline output to GitHub Actions output file if available."""
+    output_file = os.getenv('GITHUB_OUTPUT')
+    if not output_file:
+        return
+
+    with open(output_file, 'a', encoding='utf-8') as f:
+        f.write(f"{name}<<EOF\n{value}\nEOF\n")
+
+
+def export_manual_ai_inputs(
+    config: Config,
+    args: argparse.Namespace,
+    stock_codes: Optional[List[str]] = None,
+) -> None:
+    """Export manual AI input bundle that matches stocks-only pre-LLM context."""
+    if stock_codes is None:
+        config.refresh_stock_list()
+
+    effective_codes = stock_codes if stock_codes is not None else config.stock_list
+    filtered_codes, effective_region, should_skip = _compute_trading_day_filter(
+        config, args, effective_codes
+    )
+    if should_skip:
+        logger.info("今日所有相关市场均为非交易日，跳过导出。可使用 --force-run 强制执行。")
+        return
+
+    if set(filtered_codes) != set(effective_codes):
+        skipped = set(effective_codes) - set(filtered_codes)
+        logger.info("今日休市股票已跳过: %s", skipped)
+
+    pipeline = StockAnalysisPipeline(
+        config=config,
+        max_workers=args.workers,
+        query_id=uuid.uuid4().hex,
+        query_source="cli",
+        save_context_snapshot=False,
+    )
+
+    configured_skills = getattr(config, 'agent_skills', [])
+    use_agent = bool(getattr(config, 'agent_mode', False)) or bool(
+        configured_skills and configured_skills != ['all']
+    )
+    skill_manager = get_skill_manager(config)
+    if use_agent:
+        skill_manager.activate(configured_skills if configured_skills else ['all'])
+
+    exported_stocks: List[Dict[str, Any]] = []
+    stock_prompt_blocks: List[str] = []
+
+    for code in filtered_codes:
+        canonical_code = canonical_stock_code(code)
+        stock_name = pipeline.fetcher_manager.get_stock_name(canonical_code)
+
+        pipeline.fetch_and_save_stock_data(canonical_code)
+        context = pipeline.db.get_analysis_context(canonical_code)
+        realtime_quote = pipeline.fetcher_manager.get_realtime_quote(canonical_code)
+        chip_data = pipeline.fetcher_manager.get_chip_distribution(canonical_code)
+
+        trend_result = None
+        try:
+            end_date = datetime.now().date()
+            start_date = end_date - timedelta(days=89)
+            historical_bars = pipeline.db.get_data_range(canonical_code, start_date, end_date)
+            if historical_bars:
+                import pandas as pd
+                df = pd.DataFrame([bar.to_dict() for bar in historical_bars])
+                if config.enable_realtime_quote and realtime_quote:
+                    df = pipeline._augment_historical_with_realtime(df, realtime_quote, canonical_code)
+                trend_result = pipeline.trend_analyzer.analyze(df, canonical_code)
+        except Exception as exc:
+            logger.warning("%s 趋势分析导出失败，继续后续导出: %s", canonical_code, exc)
+
+        fundamental_context = None
+        try:
+            fundamental_context = pipeline.fetcher_manager.get_fundamental_context(
+                canonical_code,
+                budget_seconds=getattr(config, 'fundamental_stage_timeout_seconds', 1.5),
+            )
+        except Exception as exc:
+            logger.warning("%s 基本面聚合导出失败，继续后续导出: %s", canonical_code, exc)
+            fundamental_context = pipeline.fetcher_manager.build_failed_fundamental_context(canonical_code, str(exc))
+
+        if realtime_quote and getattr(realtime_quote, 'name', None):
+            stock_name = realtime_quote.name
+
+        enhanced_context = pipeline._enhance_context(
+            context=context or {'code': canonical_code, 'date': datetime.now().strftime('%Y-%m-%d'), 'today': {}},
+            realtime_quote=realtime_quote,
+            chip_data=chip_data,
+            trend_result=trend_result,
+            stock_name=stock_name,
+            fundamental_context=fundamental_context,
+        )
+
+        news_context = None
+        if pipeline.search_service.is_available:
+            try:
+                intel_results = pipeline.search_service.search_comprehensive_intel(
+                    stock_code=canonical_code,
+                    stock_name=stock_name,
+                    max_searches=5,
+                )
+                if intel_results:
+                    news_context = pipeline.search_service.format_intel_report(intel_results, stock_name)
+            except Exception as exc:
+                logger.warning("%s 情报搜索导出失败，继续后续导出: %s", canonical_code, exc)
+
+        stock_prompt = pipeline.analyzer._format_prompt(
+            enhanced_context,
+            stock_name or f"股票{canonical_code}",
+            news_context=news_context,
+        )
+
+        exported_stocks.append({
+            'code': canonical_code,
+            'name': stock_name,
+            'realtime': {
+                'price': getattr(realtime_quote, 'price', None) if realtime_quote else None,
+                'change_pct': getattr(realtime_quote, 'change_pct', None) if realtime_quote else None,
+                'open_price': getattr(realtime_quote, 'open_price', None) if realtime_quote else None,
+                'high': getattr(realtime_quote, 'high', None) if realtime_quote else None,
+                'low': getattr(realtime_quote, 'low', None) if realtime_quote else None,
+                'volume': getattr(realtime_quote, 'volume', None) if realtime_quote else None,
+                'amount': getattr(realtime_quote, 'amount', None) if realtime_quote else None,
+                'turnover_rate': getattr(realtime_quote, 'turnover_rate', None) if realtime_quote else None,
+                'volume_ratio': getattr(realtime_quote, 'volume_ratio', None) if realtime_quote else None,
+                'source': getattr(getattr(realtime_quote, 'source', None), 'value', None) if realtime_quote else None,
+            },
+            'context_date': enhanced_context.get('date'),
+            'news_context': news_context,
+            'enhanced_context': enhanced_context,
+        })
+
+        stock_prompt_blocks.append(
+            f"## {stock_name or canonical_code} ({canonical_code})\n\n{stock_prompt}\n"
+        )
+
+    regions: List[str]
+    if effective_region == 'both':
+        regions = ['cn', 'us']
+    elif effective_region in ('cn', 'us'):
+        regions = [effective_region]
+    else:
+        configured_region = getattr(config, 'market_review_region', 'cn') or 'cn'
+        regions = ['cn', 'us'] if configured_region == 'both' else [configured_region]
+
+    market_prompts: List[str] = []
+    for region in regions:
+        market_analyzer = MarketAnalyzer(
+            search_service=pipeline.search_service,
+            analyzer=None,
+            region=region,
+        )
+        overview = market_analyzer.get_market_overview()
+        news = market_analyzer.search_market_news()
+        prompt = market_analyzer._build_review_prompt(overview, news)
+        title = 'A股大盘复盘提示词' if region == 'cn' else '美股大盘复盘提示词'
+        market_prompts.append(f"# {title}\n\n{prompt}")
+    market_review_prompt = "\n\n---\n\n".join(market_prompts)
+
+    payload = {
+        'generated_at': datetime.now(timezone(timedelta(hours=8))).isoformat(),
+        'manual_mode': {
+            'matches_stocks_only_pre_llm': True,
+            'agent_mode_enabled': use_agent,
+            'agent_arch': getattr(config, 'agent_arch', 'single'),
+            'agent_orchestrator_mode': getattr(config, 'agent_orchestrator_mode', 'standard'),
+            'agent_strategy_routing': getattr(config, 'agent_strategy_routing', 'auto'),
+            'configured_agent_skills': configured_skills,
+        },
+        'stock_count': len(exported_stocks),
+        'stocks': exported_stocks,
+    }
+    stock_json_text = json.dumps(payload, ensure_ascii=False, indent=2)
+    stock_prompt_text = "\n\n---\n\n".join(stock_prompt_blocks)
+
+    strategy_prompt_text = (
+        "# Agent 策略预设（与 stocks-only 前置策略一致）\n\n"
+        f"- agent_mode_enabled: {use_agent}\n"
+        f"- agent_arch: {getattr(config, 'agent_arch', 'single')}\n"
+        f"- agent_orchestrator_mode: {getattr(config, 'agent_orchestrator_mode', 'standard')}\n"
+        f"- agent_strategy_routing: {getattr(config, 'agent_strategy_routing', 'auto')}\n"
+        f"- configured_agent_skills: {configured_skills}\n\n"
+        "## skill_instructions\n\n"
+        f"{skill_manager.get_skill_instructions()}"
+    )
+
+    reports_dir = Path('reports')
+    reports_dir.mkdir(parents=True, exist_ok=True)
+    ts = datetime.now().strftime('%Y%m%d_%H%M%S')
+    stock_json_path = reports_dir / f'manual_stock_prices_{ts}.json'
+    stock_prompt_path = reports_dir / f'manual_stock_prompt_{ts}.md'
+    market_prompt_path = reports_dir / f'manual_market_prompt_{ts}.md'
+    strategy_prompt_path = reports_dir / f'manual_strategy_prompt_{ts}.md'
+
+    stock_json_path.write_text(stock_json_text, encoding='utf-8')
+    stock_prompt_path.write_text(stock_prompt_text, encoding='utf-8')
+    market_prompt_path.write_text(market_review_prompt, encoding='utf-8')
+    strategy_prompt_path.write_text(strategy_prompt_text, encoding='utf-8')
+
+    _append_github_output('stock_price_json', stock_json_text)
+    _append_github_output('stock_analysis_prompt', stock_prompt_text)
+    _append_github_output('market_review_prompt', market_review_prompt)
+    _append_github_output('strategy_prompt', strategy_prompt_text)
+    _append_github_output('stock_price_json_file', str(stock_json_path))
+    _append_github_output('stock_analysis_prompt_file', str(stock_prompt_path))
+    _append_github_output('market_review_prompt_file', str(market_prompt_path))
+    _append_github_output('strategy_prompt_file', str(strategy_prompt_path))
+
+    logger.info(
+        "手动提问输入已导出: %s, %s, %s, %s",
+        stock_json_path,
+        stock_prompt_path,
+        market_prompt_path,
+        strategy_prompt_path,
+    )
 
 
 def run_full_analysis(
@@ -604,7 +834,13 @@ def main() -> int:
             )
             return 0
 
-        # 模式1: 仅大盘复盘
+        # 模式1: 仅导出手动 AI 输入
+        if args.export_manual_ai_inputs:
+            logger.info("模式: 导出手动 AI 提问输入")
+            export_manual_ai_inputs(config, args, stock_codes)
+            return 0
+
+        # 模式2: 仅大盘复盘
         if args.market_review:
             from src.analyzer import GeminiAnalyzer
             from src.core.market_review import run_market_review
@@ -661,7 +897,7 @@ def main() -> int:
             )
             return 0
 
-        # 模式2: 定时任务模式
+        # 模式3: 定时任务模式
         if args.schedule or config.schedule_enabled:
             logger.info("模式: 定时任务")
             logger.info(f"每日执行时间: {config.schedule_time}")
@@ -687,7 +923,7 @@ def main() -> int:
             )
             return 0
 
-        # 模式3: 正常单次运行
+        # 模式4: 正常单次运行
         if config.run_immediately:
             run_full_analysis(config, args, stock_codes)
         else:

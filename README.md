@@ -195,6 +195,20 @@
 
 `Actions` → `每日股票分析` → `Run workflow` → `Run workflow`
 
+可选 `mode`：
+
+- `full`：正常流程（个股分析 + 大盘复盘，包含 AI 调用）
+- `market-only`：仅大盘复盘（包含 AI 调用）
+- `stocks-only`：仅个股分析（包含 AI 调用）
+- `manual-ai-inputs`：只拉取实时行情并导出 3 份内容到 Actions 输出与 `reports/`：
+  （尽量对齐 `stocks-only` 在调用 Gemini/LLM 前的输入准备）
+  1. 每只股票实时价格 JSON
+  2. 个股分析提示词（按股票分段，包含新闻情报段）
+  3. 大盘复盘提示词（按 A 股/美股分段）
+  4. 策略预设提示词（Agent skill instructions + 当前 AGENT_* 配置摘要）
+
+`manual-ai-inputs` 模式不会在任务内调用 AI，你可以在 workflow 结束后从 artifact 或 step output 复制内容，按“策略预设提示词 → 个股提示词/JSON → 大盘提示词”的顺序手动向任意模型提问。
+
 #### 完成
 
 默认每个**工作日 18:00（北京时间）**自动执行，也可手动触发。默认非交易日（含 A/H/US 节假日）不执行。

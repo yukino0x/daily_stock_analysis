@@ -17,6 +17,7 @@ on:
           - full          # 完整分析（股票+大盘）
           - market-only   # 仅大盘复盘
           - stocks-only   # 仅股票分析
+          - manual-ai-inputs # 导出JSON+提示词（不调用AI）
       force_run:
         description: '强制运行（跳过交易日检查）'
         required: false
@@ -57,6 +58,7 @@ jobs:
           mkdir -p data logs reports
       
       - name: 执行股票分析
+        id: analyze
         env:
           # ==========================================
           # AI 配置
@@ -239,8 +241,20 @@ jobs:
             python main.py --market-review $FORCE_RUN_ARG
           elif [ "$MODE" = "stocks-only" ]; then
             python main.py --no-market-review $FORCE_RUN_ARG
+          elif [ "$MODE" = "manual-ai-inputs" ]; then
+            python main.py --export-manual-ai-inputs $FORCE_RUN_ARG
           else
             python main.py $FORCE_RUN_ARG
+          fi
+
+      - name: 显示手动AI提问输入输出
+        if: always()
+        run: |
+          if [ -n "${{ steps.analyze.outputs.stock_price_json_file }}" ]; then
+            echo "手动提问数据文件: ${{ steps.analyze.outputs.stock_price_json_file }}"
+            echo "个股提示词文件: ${{ steps.analyze.outputs.stock_analysis_prompt_file }}"
+            echo "大盘提示词文件: ${{ steps.analyze.outputs.market_review_prompt_file }}"
+            echo "策略预设提示词文件: ${{ steps.analyze.outputs.strategy_prompt_file }}"
           fi
       
       - name: 上传分析报告
