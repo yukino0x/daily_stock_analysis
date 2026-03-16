@@ -13,6 +13,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 - 🐛 **港股 Agent 实时行情去重与快速路由** — 统一 `HK01810` / `1810.HK` / `01810` 等港股代码归一规则；港股实时行情改为直接走单次 `akshare_hk` 路径，避免按 A 股 source priority 重复触发同一失败接口；Agent 运行期对显式 `retriable=false` 的工具失败增加短路缓存，减少同轮分析中的重复失败调用。
 
+### 新功能
+
+- 🧾 **GitHub Actions 新增 `manual-ai-inputs` 模式** — 在 `daily_analysis.yml` 中支持只导出手动提问素材：实时股价 JSON、个股分析提示词、大盘复盘提示词；并写入 GitHub Actions outputs 与 `reports/` 文件，便于在工作流外手动向 AI 提问。
+
 ## [3.7.0] - 2026-03-15
 
 ### 新功能
