@@ -15,6 +15,7 @@ A股自选股智能分析系统 - 通知层
    - Pushover（手机/桌面推送）
 """
 import logging
+import re
 from datetime import datetime
 from typing import List, Dict, Any, Optional, Tuple
 from enum import Enum
@@ -538,22 +539,27 @@ class NotificationService(
         ])
         
         # Issue #262: summary_only 时仅输出摘要，跳过个股详情
-        if self._report_summary_only:
-            report_lines.extend(["## 📊 分析结果摘要", ""])
-            for r in sorted_results:
-                emoji = r.get_emoji()
-                report_lines.append(
-                    f"{emoji} **{r.name}({r.code})**: {r.operation_advice} | "
-                    f"评分 {r.sentiment_score} | {r.trend_prediction}"
-                )
-        else:
-            report_lines.extend(["## 📈 个股详细分析", ""])
+        report_lines.extend(["## 📊 分析结果摘要", ""])
+        for r in sorted_results:
+            emoji = r.get_emoji()
+            anchor = self._build_stock_anchor(r.code)
+            stock_name = self._escape_md(r.name)
+            stock_label = f"[**{stock_name}({r.code})**](#{anchor})" if not self._report_summary_only else f"**{stock_name}({r.code})**"
+            report_lines.append(
+                f"{emoji} {stock_label}: {r.operation_advice} | "
+                f"评分 {r.sentiment_score} | {r.trend_prediction}"
+            )
+
+        if not self._report_summary_only:
+            report_lines.extend(["", "---", "", "## 📈 个股详细分析", ""])
             # 逐个股票的详细分析
             for result in sorted_results:
                 emoji = result.get_emoji()
                 confidence_stars = result.get_confidence_stars() if hasattr(result, 'get_confidence_stars') else '⭐⭐'
-                
+                anchor = self._build_stock_anchor(result.code)
+
                 report_lines.extend([
+                    f"<a id=\"{anchor}\"></a>",
                     f"### {emoji} {result.name} ({result.code})",
                     "",
                     f"**操作建议：{result.operation_advice}** | **综合评分：{result.sentiment_score}分** | **趋势预测：{result.trend_prediction}** | **置信度：{confidence_stars}**",
@@ -692,6 +698,12 @@ class NotificationService(
         return name.replace('*', r'\*') if name else name
 
     @staticmethod
+    def _build_stock_anchor(stock_code: str) -> str:
+        """Build a stable in-page anchor id for a stock section."""
+        safe_code = re.sub(r'[^a-zA-Z0-9_-]', '-', str(stock_code or '').strip().lower())
+        return f"stock-{safe_code}" if safe_code else "stock-unknown"
+
+    @staticmethod
     def _clean_sniper_value(value: Any) -> str:
         """Normalize sniper point values and remove redundant label prefixes."""
         if value is None:
@@ -810,8 +822,10 @@ class NotificationService(
             for r in sorted_results:
                 _, signal_emoji, _ = self._get_signal_level(r)
                 display_name = self._escape_md(r.name)
+                anchor = self._build_stock_anchor(r.code)
+                stock_label = f"[**{display_name}({r.code})**](#{anchor})" if not self._report_summary_only else f"**{display_name}({r.code})**"
                 report_lines.append(
-                    f"{signal_emoji} **{display_name}({r.code})**: {r.operation_advice} | "
+                    f"{signal_emoji} {stock_label}: {r.operation_advice} | "
                     f"评分 {r.sentiment_score} | {r.trend_prediction}"
                 )
             report_lines.extend([
@@ -829,8 +843,10 @@ class NotificationService(
                 # 股票名称（优先使用 dashboard 或 result 中的名称，转义 *ST 等特殊字符）
                 raw_name = result.name if result.name and not result.name.startswith('股票') else f'股票{result.code}'
                 stock_name = self._escape_md(raw_name)
-                
+                anchor = self._build_stock_anchor(result.code)
+
                 report_lines.extend([
+                    f"<a id=\"{anchor}\"></a>",
                     f"## {signal_emoji} {stock_name} ({result.code})",
                     "",
                 ])
