@@ -7,7 +7,7 @@
 
 {% for e in enriched %}
 {% set anchor = 'stock-' ~ (e.result.code|string|lower|replace('.', '-')|replace(' ', '-')) %}
-{{ e.signal_emoji }} {% if not summary_only %}[**{{ e.stock_name }}({{ e.result.code }})**](./#{{ anchor }}){% else %}**{{ e.stock_name }}({{ e.result.code }})**{% endif %}: {{ e.result.operation_advice }} | 评分 {{ e.result.sentiment_score }} | {{ e.result.trend_prediction }}
+{{ e.signal_emoji }} {% if not summary_only %}[**{{ e.stock_name }}({{ e.result.code }})**](#{{ anchor }}){% else %}**{{ e.stock_name }}({{ e.result.code }})**{% endif %}: {{ e.result.operation_advice }} | 评分 {{ e.result.sentiment_score }} | {{ e.result.trend_prediction }}
 {% endfor %}
 
 ---

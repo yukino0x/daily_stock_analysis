@@ -544,7 +544,7 @@ class NotificationService(
             emoji = r.get_emoji()
             anchor = self._build_stock_anchor(r.code)
             stock_name = self._escape_md(r.name)
-            stock_label = f"[**{stock_name}({r.code})**](./#{anchor})" if not self._report_summary_only else f"**{stock_name}({r.code})**"
+            stock_label = f"[**{stock_name}({r.code})**](#{anchor})" if not self._report_summary_only else f"**{stock_name}({r.code})**"
             report_lines.append(
                 f"{emoji} {stock_label}: {r.operation_advice} | "
                 f"评分 {r.sentiment_score} | {r.trend_prediction}"
@@ -823,7 +823,7 @@ class NotificationService(
                 _, signal_emoji, _ = self._get_signal_level(r)
                 display_name = self._escape_md(r.name)
                 anchor = self._build_stock_anchor(r.code)
-                stock_label = f"[**{display_name}({r.code})**](./#{anchor})" if not self._report_summary_only else f"**{display_name}({r.code})**"
+                stock_label = f"[**{display_name}({r.code})**](#{anchor})" if not self._report_summary_only else f"**{display_name}({r.code})**"
                 report_lines.append(
                     f"{signal_emoji} {stock_label}: {r.operation_advice} | "
                     f"评分 {r.sentiment_score} | {r.trend_prediction}"
